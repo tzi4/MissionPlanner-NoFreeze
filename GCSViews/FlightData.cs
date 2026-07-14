@@ -1031,14 +1031,23 @@ namespace MissionPlanner.GCSViews
             }
         }
 
-        private void BUT_ARM_Click(object sender, EventArgs e)
+        private async void BUT_ARM_Click(object sender, EventArgs e)
         {
             if (!MainV2.comPort.BaseStream.IsOpen)
                 return;
 
+            var armbutton = sender as Control;
+
             // arm the MAV
             try
             {
+                if (armbutton != null)
+                    armbutton.Enabled = false;
+
+                // capture the target before any await, so a vehicle switch mid-command cant redirect it
+                var sysid = (byte) MainV2.comPort.sysidcurrent;
+                var compid = (byte) MainV2.comPort.compidcurrent;
+
                 var isitarmed = MainV2.comPort.MAV.cs.armed;
                 var action = MainV2.comPort.MAV.cs.armed ? "Disarm" : "Arm";
 
@@ -1053,9 +1062,16 @@ namespace MissionPlanner.GCSViews
                     sb.AppendLine(Encoding.ASCII.GetString(((MAVLink.mavlink_statustext_t) message.data).text)
                         .TrimEnd('\0'));
                     return true;
-                }, (byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent);
-                bool ans = MainV2.comPort.doARM(!isitarmed);
-                MainV2.comPort.UnSubscribeToPacketType(sub);
+                }, sysid, compid);
+                bool ans;
+                try
+                {
+                    ans = await MainV2.comPort.doARMAsync(sysid, compid, !isitarmed).ConfigureAwait(true);
+                }
+                finally
+                {
+                    MainV2.comPort.UnSubscribeToPacketType(sub);
+                }
                 if (ans == false)
                 {
                     if (CustomMessageBox.Show(
@@ -1065,7 +1081,7 @@ namespace MissionPlanner.GCSViews
                             CustomMessageBox.MessageBoxIcon.Exclamation, "Force " + action, "Cancel") ==
                         CustomMessageBox.DialogResult.Yes)
                     {
-                        ans = MainV2.comPort.doARM(!isitarmed, true);
+                        ans = await MainV2.comPort.doARMAsync(sysid, compid, !isitarmed, true).ConfigureAwait(true);
                         if (ans == false)
                         {
                             CustomMessageBox.Show(Strings.ErrorRejectedByMAV, Strings.ERROR);
@@ -1076,6 +1092,11 @@ namespace MissionPlanner.GCSViews
             catch
             {
                 CustomMessageBox.Show(Strings.ErrorNoResponse, Strings.ERROR);
+            }
+            finally
+            {
+                if (armbutton != null)
+                    armbutton.Enabled = true;
             }
         }
 
@@ -1655,20 +1676,22 @@ namespace MissionPlanner.GCSViews
             MainV2.comPort.setMode(CMB_modes.Text);
         }
 
-        private void BUT_setwp_Click(object sender, EventArgs e)
+        private async void BUT_setwp_Click(object sender, EventArgs e)
         {
             try
             {
                 ((Control) sender).Enabled = false;
-                MainV2.comPort.setWPCurrent(MainV2.comPort.MAV.sysid, MainV2.comPort.MAV.compid,
-                    (ushort) CMB_setwp.SelectedIndex); // set nav to
+                await MainV2.comPort.setWPCurrentAsync(MainV2.comPort.MAV.sysid, MainV2.comPort.MAV.compid,
+                    (ushort) CMB_setwp.SelectedIndex).ConfigureAwait(true); // set nav to
             }
             catch
             {
                 CustomMessageBox.Show(Strings.CommandFailed, Strings.ERROR);
             }
-
-            ((Control) sender).Enabled = true;
+            finally
+            {
+                ((Control) sender).Enabled = true;
+            }
         }
 
         private void BUT_speed1_Click(object sender, EventArgs e)
@@ -5289,7 +5312,7 @@ namespace MissionPlanner.GCSViews
         {
         }
 
-        private void takeOffToolStripMenuItem_Click(object sender, EventArgs e)
+        private async void takeOffToolStripMenuItem_Click(object sender, EventArgs e)
         {
             if (MainV2.comPort.BaseStream.IsOpen)
             {
@@ -5306,8 +5329,8 @@ namespace MissionPlanner.GCSViews
 
                 try
                 {
-                    MainV2.comPort.doCommand((byte) MainV2.comPort.sysidcurrent, (byte) MainV2.comPort.compidcurrent,
-                        MAVLink.MAV_CMD.TAKEOFF, 0, 0, 0, 0, 0, 0, altf);
+                    await MainV2.comPort.doCommandAsync((byte) MainV2.comPort.sysidcurrent, (byte) MainV2.comPort.compidcurrent,
+                        MAVLink.MAV_CMD.TAKEOFF, 0, 0, 0, 0, 0, 0, altf).ConfigureAwait(true);
                 }
                 catch
                 {
