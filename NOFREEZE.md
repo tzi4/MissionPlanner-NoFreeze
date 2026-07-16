@@ -1,49 +1,49 @@
 # Mission Planner — NoFreeze Fork
 
-Resmî [ArduPilot/MissionPlanner](https://github.com/ArduPilot/MissionPlanner)'ın, **çoklu araç kullanımındaki arayüz donmasını gideren** fork'u.
+A fork of the official [ArduPilot/MissionPlanner](https://github.com/ArduPilot/MissionPlanner) that **fixes the UI freeze when operating multiple vehicles**.
 
-**Sorun:** Tek UDP portuna bağlı birden çok İHA ile uçarken (örn. 5 drone → 14550), Arm/Takeoff/Set WP gibi komutlar ACK bekleme süresince arayüzü **30–60 saniye tamamen donduruyor** ve bu sırada bağlı TÜM araçların telemetri işlenmesi duruyordu.
+**The problem:** When flying several UAVs over a single shared link (e.g. 5 drones streaming into one UDP port), commands like Arm/Takeoff/Set WP **froze the entire UI for 30–60 seconds** while waiting for the vehicle's acknowledgement — and telemetry processing for *every* connected vehicle stalled at the same time.
 
-**Çözüm (branch: `fix/multi-uav-freeze`):**
-- Arm/Disarm, Takeoff ve Set WP düğmeleri komutu artık **asenkron** gönderir: arayüz donmaz, yalnızca ilgili düğme işlem süresince devre dışı kalır, sonuç/hata mesajları aynen gelir.
-- `giveComport` sızıntısı kapatıldı: komut beklerken bağlantı hatası oluşursa telemetrinin kalıcı kesilmesine yol açan bug düzeltildi (`try/finally`).
-- Timeout süreleri bilinçli olarak değiştirilmedi: ulaşılamayan araca verilen komut yine ~40 sn sonra "No response" der — ama artık donmadan.
+**The fix (branch: `fix/multi-uav-freeze`):**
+- Arm/Disarm, Takeoff and Set WP now send their commands **asynchronously**: the UI never freezes, only the clicked button is disabled while the command is in flight, and all success/error messages behave exactly as before.
+- Fixed a `giveComport` leak: a connection error during a command could previously leave the link's reader paused forever, killing telemetry for every vehicle until reconnect (now guarded by `try/finally`).
+- Command timeouts are intentionally unchanged: a command to an unreachable vehicle still reports "No response" after ~40 s — it just no longer freezes anything while waiting.
 
-Teknik derinlik: [docs-nofreeze/ANALIZ.md](docs-nofreeze/ANALIZ.md) (kök neden analizi, QGC karşılaştırması) ve [docs-nofreeze/YAMA-NOTLARI.md](docs-nofreeze/YAMA-NOTLARI.md) (değişiklik listesi, derleme, test planı).
+Technical deep dive: [docs-nofreeze/ANALYSIS.md](docs-nofreeze/ANALYSIS.md) (root cause analysis, side-by-side comparison with QGroundControl) and [docs-nofreeze/PATCH-NOTES.md](docs-nofreeze/PATCH-NOTES.md) (change list, build and test notes).
 
 ---
 
-## Kurulum — Linux (derleme GEREKMEZ)
+## Install — Linux (no build required)
 
-Hazır derlenmiş paket **[Releases](../../releases)** sayfasındadır. Mission Planner, Linux'ta Mono ile çalışır:
+A pre-built package is available on the **[Releases](../../releases)** page. Mission Planner runs on Linux via Mono:
 
 ```bash
-# 1) Mono kur (Ubuntu/Debian; mono >= 6 önerilir)
+# 1) Install Mono (Ubuntu/Debian; Mono >= 6 recommended)
 sudo apt update
 sudo apt install -y mono-complete unzip
 
-# 2) Releases sayfasından zip'i indirip aç
+# 2) Download the zip from the Releases page, then:
 unzip MissionPlanner-NoFreeze-*.zip -d ~/MissionPlanner-NoFreeze
 
-# 3) Çalıştır
+# 3) Run
 cd ~/MissionPlanner-NoFreeze
 mono MissionPlanner.exe
 ```
 
-Notlar:
-- İlk açılış yavaş olabilir (Mono JIT); ayarlar `~/Documents/Mission Planner/` altında tutulur.
-- Bağlantı: sağ üstten **UDP** seçin → Connect → port **14550**. Aynı porta paket atan tüm araçlar tek bağlantıda, sağ üstteki araç seçiciden görünür.
-- Video akışı isteğe bağlıdır (`sudo apt install -y gstreamer1.0-tools gstreamer1.0-plugins-good` vb.); GCS işlevleri için gerekmez.
-- Sorun olursa terminaldeki konsol çıktısı doğrudan hatayı gösterir.
+Notes:
+- First start can be slow (Mono JIT); settings are stored under `~/Documents/Mission Planner/`.
+- Connecting: pick **UDP** in the top-right corner → Connect → enter your port. All vehicles streaming into that port appear on one connection and are selectable from the vehicle drop-down.
+- Video streaming is optional (`sudo apt install -y gstreamer1.0-tools gstreamer1.0-plugins-good` etc.); not needed for GCS functions.
+- If anything misbehaves, the console output in the terminal shows the error directly.
 
-## Kurulum — Windows
+## Install — Windows
 
-Releases'tan zip'i indirin → bir klasöre açın → `MissionPlanner.exe` çift tık. (Kurulu resmî MP ile **aynı anda çalıştırmayın** — aynı ayar klasörünü paylaşırlar.)
+Download the zip from Releases → extract to a folder → double-click `MissionPlanner.exe`. (Do **not** run it at the same time as an officially installed Mission Planner — they share the same settings folder.)
 
-## Güncelleme
+## Updating
 
-Yeni sürüm çıktığında Releases sayfasından yeni zip'i indirip eski klasörün üzerine açmanız yeterli (ayarlarınız `Documents/Mission Planner`'da olduğu için korunur).
+When a new release is published, just download the new zip and extract it over the old folder. Your settings live in `Documents/Mission Planner`, so they are preserved.
 
-## Uyarı
+## Disclaimer
 
-Bu deneysel bir yapıdır. Gerçek uçuş operasyonunda birincil YKİ olarak kullanmadan önce SITL veya pervanesiz bench testinde doğrulayın. Kaynak: master `a2fcd74` (2026-07-11) + yama commit'leri; Debug konfigürasyonuyla derlenmiştir.
+This is an experimental build. Verify it in SITL or on the bench (props off) before using it as your primary GCS in field operations. Base: upstream master `a2fcd74` (2026-07-11) plus the patch commits; built in Debug configuration.
