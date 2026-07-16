@@ -1,0 +1,9 @@
+<Project>
+  <!-- Local build helper (NOT part of the fix, do not commit):
+       this machine has no .NET Framework targeting packs installed, so resolve the
+       net472 reference assemblies from NuGet for every full-framework project.
+       Projects that already reference this package just produce a NU1504 warning. -->
+  <ItemGroup Condition="'$(TargetFrameworkIdentifier)' == '.NETFramework'">
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.2" PrivateAssets="all" />
+  </ItemGroup>
+</Project>
